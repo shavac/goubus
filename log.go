@@ -7,5 +7,5 @@ import (
 var log = slog.Default()
 
 func SetLogLevel(lvl slog.Level) {
-	slog.SetLogLoggerLevel(slog.LevelWarn)
+	slog.SetLogLoggerLevel(lvl)
 }
