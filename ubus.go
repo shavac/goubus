@@ -4,13 +4,9 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"time"
-
-	"github.com/shavac/httpunix"
 )
 
 func init() {
@@ -29,7 +25,7 @@ type ubusResult []interface{}
 
 func (res ubusResult) Code() int {
 	if len(res) == 0 {
-		return -1
+		return 0
 	}
 	code, ok := res[0].(float64)
 	if !ok {
@@ -119,11 +115,19 @@ func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]in
 		JsonRPC string     `json:"jsonrpc"`
 		ID      int        `json:"id"`
 		Result  ubusResult `json:"result"`
+		Error   struct {
+			Code    int
+			Message string
+		} `json:"error"`
 	}{}
 	json.Unmarshal(body, &resp)
 	//Function Error
+	if resp.ID != u.id {
+		return nil, SysErrorIDMismatch
+	}
+	u.id++
 	if resp.Result.Code() != UbusStatusOK {
-		return nil, UbusError(resp.Result.Code())
+		return &resp.Result, UbusError(resp.Result.Code())
 	}
 	return &resp.Result, nil
 }
@@ -132,11 +136,8 @@ func (u *ubus) Call(ubusObj, ubusMethod string, args map[string]interface{}) (*u
 	return u.RPCRequest("call", ubusObj, ubusMethod, args)
 }
 
-func (u *ubus) List(ubusObj, ubusMethod string, args map[string]interface{}) (*ubusResult, error) {
-	return u.RPCRequest("list", ubusObj, ubusMethod, args)
-}
-
 func httpRequest(url string, jsonStr []byte) ([]byte, error) {
+	log.Debug("URL:", url, "REQ:", string(jsonStr), "\n")
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonStr))
 	if err != nil || resp == nil {
 		return nil, err
@@ -146,30 +147,10 @@ func httpRequest(url string, jsonStr []byte) ([]byte, error) {
 		return nil, httpError(resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
+	log.Debug("URL:", url, "RES:", string(body), "\n")
 	return body, nil
 }
 
 func socketRequest(filepath string, jsonStr []byte) ([]byte, error) {
-	tr := &httpunix.Transport{
-		DialTimeout:           500 * time.Millisecond,
-		RequestTimeout:        1 * time.Second,
-		ResponseHeaderTimeout: 1 * time.Second,
-	}
-	tr.RegisterLocation("myservice", filepath)
-
-	var client = http.Client{
-		Transport: tr,
-	}
-
-	resp, err := client.Post("http+unix://myservice", "application/json", bytes.NewBuffer(jsonStr))
-	if err != nil {
-		log.Error(err.Error())
-		return []byte{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Error %s", resp.Status)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	return body, nil
+	return nil, SysErrorNotImplemented
 }

@@ -2,7 +2,6 @@ package goubus
 
 import (
 	"encoding/json"
-	"errors"
 )
 
 // authData represents the Data response from auth module
@@ -45,7 +44,7 @@ func (u *ubus) Login(username, password string) (*authData, error) {
 // Logined check if login RPC Session id has expired
 func (u *ubus) Logined() error {
 	if u.authData.UbusRPCSession == EmptySession {
-		return errors.New("Not logined error")
+		return UbusErrorPermissionDenied
 	}
 	return nil
 }

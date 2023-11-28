@@ -1,6 +1,7 @@
 package goubus
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -10,6 +11,11 @@ type httpError int
 func (herr httpError) Error() string {
 	return http.StatusText(int(herr))
 }
+
+var (
+	SysErrorIDMismatch     = errors.New("response id mismatch")
+	SysErrorNotImplemented = errors.New("function not implemented")
+)
 
 type ubusError struct {
 	Code    int
