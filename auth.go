@@ -2,6 +2,8 @@ package goubus
 
 import (
 	"encoding/json"
+
+	"github.com/tidwall/gjson"
 )
 
 // authData represents the Data response from auth module
@@ -33,12 +35,20 @@ func (u *ubus) Login(username, password string) (*authData, error) {
 	if err != nil {
 		return nil, err
 	}
-	ad := authData{}
-	if err := json.Unmarshal(res.toBytes(), &ad); err != nil {
+	resArray := gjson.Parse(res).Array()
+	//fmt.Println(resArray)
+	if len(resArray) < 2 {
+		return nil, UbusErrorUnknown
+	}
+	rcode := resArray[0].Int()
+	if rcode != 0 {
+		return nil, UbusError(int(rcode))
+	}
+	ad := &authData{}
+	if err := json.Unmarshal([]byte(resArray[1].Raw), ad); err != nil {
 		return nil, err
 	}
-	u.authData = ad
-	return &ad, nil
+	return ad, nil
 }
 
 // Logined check if login RPC Session id has expired

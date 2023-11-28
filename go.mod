@@ -2,7 +2,9 @@ module github.com/shavac/goubus
 
 go 1.22
 
+require github.com/tidwall/gjson v1.17.0
+
 require (
-	github.com/buger/jsonparser v1.1.1
-	github.com/shavac/httpunix v0.0.0-20231126201751-0a875664d5a6
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
 )

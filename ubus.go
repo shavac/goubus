@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/tidwall/gjson"
 )
 
 func init() {
@@ -15,7 +17,7 @@ func init() {
 
 type ubusRequest struct {
 	JsonRPC string        `json:"jsonrpc"`
-	ID      int           `json:"id"`
+	ID      int64         `json:"id"`
 	Method  string        `json:"method"`
 	Params  []interface{} `json:"params"`
 }
@@ -23,42 +25,20 @@ type ubusRequest struct {
 // ubusResult represents a response from JSON-RPC
 type ubusResult []interface{}
 
-func (res ubusResult) Code() int {
-	if len(res) == 0 {
-		return 0
-	}
-	code, ok := res[0].(float64)
-	if !ok {
-		return -2
-	}
-	return int(code)
-}
-
 func (res ubusResult) toString() string {
 	return string(res.toBytes())
 }
 
 func (res ubusResult) toBytes() []byte {
-	if len(res) < 2 {
-		return []byte{}
-	}
-	b, _ := json.Marshal(res[1])
+	b, _ := json.Marshal(res)
 	return b
-}
-
-func (res ubusResult) toMap() map[string]interface{} {
-	if len(res) < 2 {
-		return nil
-	}
-	m, _ := res[1].(map[string]interface{})
-	return m
 }
 
 // ubus represents information to JSON-RPC Interaction with router
 type ubus struct {
 	endpoint string
 	authData
-	id int
+	id int64
 	//jsonrpc func(method, object, ubusMethod string, args ...string) ubusResponse
 	request func([]byte) ([]byte, error)
 }
@@ -103,36 +83,37 @@ func (u *ubus) buildReqestJson(method, ubusObj, ubusMethod string, args map[stri
 	return jsonReq
 }
 
-func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (*ubusResult, error) {
+func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (string, error) {
 	jsonReq := u.buildReqestJson(method, ubusObj, ubusMethod, args)
 	//slog.Debug(string(jsonReq))
 	body, err := u.request(jsonReq)
 	if err != nil || body == nil {
-		return nil, err
+		return "", err
 	}
 	//slog.Debug(string(body))
-	resp := struct {
-		JsonRPC string     `json:"jsonrpc"`
-		ID      int        `json:"id"`
-		Result  ubusResult `json:"result"`
-		Error   struct {
-			Code    int
-			Message string
-		} `json:"error"`
-	}{}
-	json.Unmarshal(body, &resp)
+	/*
+		resp := struct {
+			JsonRPC string     `json:"jsonrpc"`
+			ID      int        `json:"id"`
+			Result  ubusResult `json:"result"`
+			Error   struct {
+				Code    int
+				Message string
+			} `json:"error"`
+		}{}
+		json.Unmarshal(body, &resp)
+	*/
+	id := gjson.GetBytes(body, "id").Int()
 	//Function Error
-	if resp.ID != u.id {
-		return nil, SysErrorIDMismatch
+	if id != u.id {
+		return "", SysErrorIDMismatch
 	}
 	u.id++
-	if resp.Result.Code() != UbusStatusOK {
-		return &resp.Result, UbusError(resp.Result.Code())
-	}
-	return &resp.Result, nil
+	res := gjson.GetBytes(body, "result").Raw
+	return res, nil
 }
 
-func (u *ubus) Call(ubusObj, ubusMethod string, args map[string]interface{}) (*ubusResult, error) {
+func (u *ubus) Call(ubusObj, ubusMethod string, args map[string]interface{}) (string, error) {
 	return u.RPCRequest("call", ubusObj, ubusMethod, args)
 }
 

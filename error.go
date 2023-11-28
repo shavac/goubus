@@ -30,6 +30,7 @@ var (
 	UbusErrorPermissionDenied = ubusError{UbusStatusPermissionDenied, "Permission Denied"}
 	UbusErrorInvalidCommand   = ubusError{UbusStatusInvalidCommand, "Invalid Command"}
 	UbusErrorInvalidArgument  = ubusError{UbusStatusInvalidArgument, "Invalid Argument"}
+	UbusErrorUnknown          = ubusError{UbusStatusUnknown, "Unknown Error"}
 )
 
 func UbusError(code int) error {
@@ -45,7 +46,7 @@ func UbusError(code int) error {
 		UbusStatusPermissionDenied: UbusErrorPermissionDenied,
 		UbusStatusTimeout:          nil,
 		UbusStatusNotSupported:     nil,
-		UbusStatusUnknownError:     nil,
+		UbusStatusUnknown:          UbusErrorUnknown,
 		UbusStatusConnectionFailed: nil,
 		UbusStatusLast:             nil,
 	}

@@ -15,7 +15,7 @@ const (
 	UbusStatusPermissionDenied UbusResponseCode = 6
 	UbusStatusTimeout          UbusResponseCode = 7
 	UbusStatusNotSupported     UbusResponseCode = 8
-	UbusStatusUnknownError     UbusResponseCode = 9
+	UbusStatusUnknown          UbusResponseCode = 9
 	UbusStatusConnectionFailed UbusResponseCode = 10
 	UbusStatusLast             UbusResponseCode = 11
 )
