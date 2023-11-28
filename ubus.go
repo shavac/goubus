@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/shavac/httpunix"
@@ -20,29 +17,46 @@ func init() {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 }
 
+type ubusRequest struct {
+	JsonRPC string        `json:"jsonrpc"`
+	ID      int           `json:"id"`
+	Method  string        `json:"method"`
+	Params  []interface{} `json:"params"`
+}
+
+// ubusResult represents a response from JSON-RPC
+type ubusResult []interface{}
+
+func (res ubusResult) Code() int {
+	if len(res) == 0 {
+		return -1
+	}
+	code, ok := res[0].(float64)
+	if !ok {
+		return -2
+	}
+	return int(code)
+}
+
+func (res ubusResult) ToString() string {
+	if len(res) < 2 {
+		return ""
+	}
+	s := fmt.Sprint(res[1])
+	return s
+}
+
+func (res ubusResult) ToBytes() []byte {
+	return []byte(res.ToString())
+}
+
 // ubus represents information to JSON-RPC Interaction with router
 type ubus struct {
 	endpoint string
 	authData
 	id int
 	//jsonrpc func(method, object, ubusMethod string, args ...string) ubusResponse
-	reqFunc func([]byte) ([]byte, error)
-}
-
-// authData represents the Data response from auth module
-type authData struct {
-	UbusRPCSession string `json:"ubus_rpc_session"`
-	Timeout        int
-	Expires        int
-	ACLS           acls `json:"acls"`
-	Data           map[string]string
-}
-
-// acls represents the ACL from user on Authentication
-type acls struct {
-	AccessGroup map[string][]string `json:"access-group"`
-	Ubus        map[string][]string
-	Uci         map[string][]string
+	request func([]byte) ([]byte, error)
 }
 
 func NewUbus(endp string) (*ubus, error) {
@@ -55,58 +69,25 @@ func NewUbus(endp string) (*ubus, error) {
 	}
 	ub := &ubus{endpoint: endp, id: 1, authData: authData{UbusRPCSession: EmptySession}}
 	if u.Scheme == "http" || u.Scheme == "https" {
-		ub.reqFunc = func(jsonStr []byte) ([]byte, error) {
+		ub.request = func(jsonStr []byte) ([]byte, error) {
 			return httpRequest(endp, jsonStr)
 		}
 	} else if u.Scheme == "" {
-		ub.reqFunc = func(jsonStr []byte) ([]byte, error) {
+		ub.request = func(jsonStr []byte) ([]byte, error) {
 			return socketRequest(endp, jsonStr)
 		}
 	}
 	return ub, nil
 }
 
-// ubusResponse represents a response from JSON-RPC
-type ubusResponse struct {
-	JSONRPC          string
-	ID               int
-	Error            UbusResponseError
-	Result           interface{}
-	UbusResponseCode UbusResponseCode
-}
-
-type UbusResponseError struct {
-	Code    int
-	Message string
-}
-
-type ubusExec struct {
-	Code   int
-	Stdout string
-}
-
-type ubusParams struct {
-	UbusRPCSession string
-	ObjectName     string
-	ubusMethod     string
-	arguments      map[string]string
-}
-
-type ubusRequest struct {
-	JsonRPC string        `json:"jsonrpc"`
-	ID      int           `json:"id"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
-}
-
-func (u *ubus) buildJson(cmd, obj, ubusMethod string, args map[string]interface{}) []byte {
+func (u *ubus) buildReqestJson(method, ubusObj, ubusMethod string, args map[string]interface{}) []byte {
 	req := &ubusRequest{
 		JsonRPC: "2.0",
 		ID:      u.id,
-		Method:  cmd,
+		Method:  method,
 		Params: []interface{}{
 			u.authData.UbusRPCSession,
-			obj,
+			ubusObj,
 			ubusMethod,
 			args,
 		},
@@ -118,89 +99,34 @@ func (u *ubus) buildJson(cmd, obj, ubusMethod string, args map[string]interface{
 	return jsonReq
 }
 
-func (u *ubus) JsonRPC(cmd, obj, ubusMethod string, args map[string]interface{}) (*ubusResponse, error) {
-	jsonReq := u.buildJson(cmd, obj, ubusMethod, args)
-	resp, err := u.JsonRequest(jsonReq)
-	if err != nil || resp == nil {
+func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (ubusResult, error) {
+	jsonReq := u.buildReqestJson(method, ubusObj, ubusMethod, args)
+	//slog.Debug(string(jsonReq))
+	body, err := u.request(jsonReq)
+	if err != nil || body == nil {
 		return nil, err
 	}
+	//slog.Debug(string(body))
+	resp := struct {
+		JsonRPC string     `json:"jsonrpc"`
+		ID      int        `json:"id"`
+		Result  ubusResult `json:"result"`
+	}{}
+	json.Unmarshal(body, &resp)
 	//Function Error
-	if resp.Error.Code != 0 {
-		if resp.Error.Code == UbusStatusPermissionDenied {
-			return nil, errors.New("Access denied for this instance, read https://openwrt.org/docs/techref/ubus#acls ")
-		}
-		return nil, errors.New(resp.Error.Message)
+	if resp.Result.Code() != UbusStatusOK {
+		return nil, UbusError(resp.Result.Code())
 	}
-	//Workaround cause response code not contempled by unmarshal function
-	resp.UbusResponseCode = UbusResponseCode(resp.Result.([]interface{})[0].(float64))
-	if resp.UbusResponseCode != UbusStatusOK {
-		return resp, fmt.Errorf("Ubus Status Failed: %d", resp.UbusResponseCode)
-	}
-	return resp, nil
+	return resp.Result, nil
 }
 
-// Login Call JSON-RPC method to Router Authentication
-func (u *ubus) Login(username, password string) (bool, error) {
-	u.authData.UbusRPCSession = EmptySession
-	resp, err := u.JsonRPC("call",
-		"session",
-		"login",
-		map[string]interface{}{
-			"username": username,
-			"password": password,
-		})
-	if err != nil {
-		return false, err
-	}
-	ubusData := authData{}
-	ubusDataByte, err := json.Marshal(resp.Result.([]interface{})[1])
-	if err != nil {
-		return false, errors.New("Error Parsing Login Data")
-	}
-	json.Unmarshal(ubusDataByte, &ubusData)
-	u.authData = ubusData
-	return true, nil
-}
-
-// Logined check if login RPC Session id has expired
-func (u *ubus) Logined() error {
-	if u.authData.UbusRPCSession == EmptySession {
-		return errors.New("Not logined error")
-	}
-	return nil
-}
-
-// JsonRequest do a request to Json-RPC to get/set information
-func (u *ubus) JsonRequest(jsonStr []byte) (*ubusResponse, error) {
-	body, err := u.reqFunc(jsonStr)
-	if err != nil {
-		return nil, err
-	}
-	resp := &ubusResponse{}
-	json.Unmarshal([]byte(body), &resp)
-	//Function Error
-	if resp.Error.Code != 0 {
-		if strings.Compare(resp.Error.Message, "Access denied") == 0 {
-			return nil, errors.New("Access denied for this instance, read https://openwrt.org/docs/techref/ubus#acls ")
-		}
-		return nil, errors.New(resp.Error.Message)
-	}
-	//Workaround cause response code not contempled by unmarshal function
-	resp.UbusResponseCode = UbusResponseCode(resp.Result.([]interface{})[0].(float64))
-	//Workaround to get UbusData cause the structure of this array has a problem with unmarshal
-	if resp.UbusResponseCode == UbusStatusOK {
-		return resp, nil
-	}
-	return nil, fmt.Errorf("Ubus Status Failed: %d", resp.UbusResponseCode)
+func (u *ubus) RPCCall(ubusObj, ubusMethod string, args map[string]interface{}) (ubusResult, error) {
+	return u.RPCRequest("call", ubusObj, ubusMethod, args)
 }
 
 func httpRequest(url string, jsonStr []byte) ([]byte, error) {
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonStr))
+	if err != nil || resp == nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -225,7 +151,8 @@ func socketRequest(filepath string, jsonStr []byte) ([]byte, error) {
 
 	resp, err := client.Post("http+unix://myservice", "application/json", bytes.NewBuffer(jsonStr))
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err.Error())
+		return []byte{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {

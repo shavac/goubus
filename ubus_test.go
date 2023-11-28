@@ -19,7 +19,7 @@ func Test_ubus_buildJson(t *testing.T) {
 		args       map[string]string
 	}
 	u, _ := NewUbus("")
-	jsonReq := u.buildJson(
+	jsonReq := u.buildReqestJson(
 		"call",
 		"session",
 		"login",
