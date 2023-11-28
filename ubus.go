@@ -38,16 +38,24 @@ func (res ubusResult) Code() int {
 	return int(code)
 }
 
-func (res ubusResult) ToString() string {
-	if len(res) < 2 {
-		return ""
-	}
-	s := fmt.Sprint(res[1])
-	return s
+func (res ubusResult) toString() string {
+	return string(res.toBytes())
 }
 
-func (res ubusResult) ToBytes() []byte {
-	return []byte(res.ToString())
+func (res ubusResult) toBytes() []byte {
+	if len(res) < 2 {
+		return []byte{}
+	}
+	b, _ := json.Marshal(res[1])
+	return b
+}
+
+func (res ubusResult) toMap() map[string]interface{} {
+	if len(res) < 2 {
+		return nil
+	}
+	m, _ := res[1].(map[string]interface{})
+	return m
 }
 
 // ubus represents information to JSON-RPC Interaction with router
@@ -99,7 +107,7 @@ func (u *ubus) buildReqestJson(method, ubusObj, ubusMethod string, args map[stri
 	return jsonReq
 }
 
-func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (ubusResult, error) {
+func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (*ubusResult, error) {
 	jsonReq := u.buildReqestJson(method, ubusObj, ubusMethod, args)
 	//slog.Debug(string(jsonReq))
 	body, err := u.request(jsonReq)
@@ -117,11 +125,15 @@ func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]in
 	if resp.Result.Code() != UbusStatusOK {
 		return nil, UbusError(resp.Result.Code())
 	}
-	return resp.Result, nil
+	return &resp.Result, nil
 }
 
-func (u *ubus) RPCCall(ubusObj, ubusMethod string, args map[string]interface{}) (ubusResult, error) {
+func (u *ubus) Call(ubusObj, ubusMethod string, args map[string]interface{}) (*ubusResult, error) {
 	return u.RPCRequest("call", ubusObj, ubusMethod, args)
+}
+
+func (u *ubus) List(ubusObj, ubusMethod string, args map[string]interface{}) (*ubusResult, error) {
+	return u.RPCRequest("list", ubusObj, ubusMethod, args)
 }
 
 func httpRequest(url string, jsonStr []byte) ([]byte, error) {
@@ -130,8 +142,8 @@ func httpRequest(url string, jsonStr []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Error %s on (%s)", resp.Status, url)
+	if resp.StatusCode != http.StatusOK {
+		return nil, httpError(resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	return body, nil

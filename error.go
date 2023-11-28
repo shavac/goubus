@@ -2,7 +2,14 @@ package goubus
 
 import (
 	"fmt"
+	"net/http"
 )
+
+type httpError int
+
+func (herr httpError) Error() string {
+	return http.StatusText(int(herr))
+}
 
 type ubusError struct {
 	Code    int

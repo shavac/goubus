@@ -24,7 +24,7 @@ type acls struct {
 // Login Call JSON-RPC method to Router Authentication
 func (u *ubus) Login(username, password string) (*authData, error) {
 	u.authData.UbusRPCSession = EmptySession
-	res, err := u.RPCCall(
+	res, err := u.Call(
 		"session",
 		"login",
 		map[string]interface{}{
@@ -35,7 +35,9 @@ func (u *ubus) Login(username, password string) (*authData, error) {
 		return nil, err
 	}
 	ad := authData{}
-	json.Unmarshal(res.ToBytes(), &ad)
+	if err := json.Unmarshal(res.toBytes(), &ad); err != nil {
+		return nil, err
+	}
 	u.authData = ad
 	return &ad, nil
 }
