@@ -6,6 +6,6 @@ import (
 
 var log = slog.Default()
 
-func SetLoglevel(lvl slog.Level) {
+func SetLogLevel(lvl slog.Level) {
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 }
