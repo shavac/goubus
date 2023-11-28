@@ -23,7 +23,7 @@ type acls struct {
 }
 
 // Login Call JSON-RPC method to Router Authentication
-func (u *ubus) Login(username, password string) (*authData, error) {
+func (u *UBus) Login(username, password string) (*authData, error) {
 	u.authData.UbusRPCSession = EmptySession
 	res, err := u.Call(
 		"session",
@@ -31,6 +31,7 @@ func (u *ubus) Login(username, password string) (*authData, error) {
 		map[string]interface{}{
 			"username": username,
 			"password": password,
+			"timeout":  DefaultInvokeTimeout,
 		})
 	if err != nil {
 		return nil, err
@@ -48,13 +49,16 @@ func (u *ubus) Login(username, password string) (*authData, error) {
 	if err := json.Unmarshal([]byte(resArray[1].Raw), ad); err != nil {
 		return nil, err
 	}
+	u.authData = *ad
 	return ad, nil
 }
 
 // Logined check if login RPC Session id has expired
-func (u *ubus) Logined() error {
+func (u *UBus) Logined() error {
 	if u.authData.UbusRPCSession == EmptySession {
-		return UbusErrorPermissionDenied
+		return UbusErrorAccessDenied
+	} else {
+
 	}
 	return nil
 }

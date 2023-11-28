@@ -4,7 +4,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func (u *ubus) List(ubusObj, ubusMethod string, args map[string]interface{}) (map[string]gjson.Result, error) {
+func (u *UBus) List(ubusObj, ubusMethod string, args map[string]interface{}) (map[string]gjson.Result, error) {
 	res, err := u.RPCRequest("list", ubusObj, ubusMethod, args)
 	if err != nil {
 		return nil, err

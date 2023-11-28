@@ -31,6 +31,7 @@ var (
 	UbusErrorInvalidCommand   = ubusError{UbusStatusInvalidCommand, "Invalid Command"}
 	UbusErrorInvalidArgument  = ubusError{UbusStatusInvalidArgument, "Invalid Argument"}
 	UbusErrorUnknown          = ubusError{UbusStatusUnknown, "Unknown Error"}
+	UbusErrorAccessDenied     = ubusError{UbusStatusAccessDenied, "Access denied"}
 )
 
 func UbusError(code int) error {
@@ -49,6 +50,7 @@ func UbusError(code int) error {
 		UbusStatusUnknown:          UbusErrorUnknown,
 		UbusStatusConnectionFailed: nil,
 		UbusStatusLast:             nil,
+		UbusStatusAccessDenied:     UbusErrorAccessDenied,
 	}
 	err, ok := errMap[code]
 	if !ok || err == nil {

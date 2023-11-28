@@ -18,6 +18,7 @@ const (
 	UbusStatusUnknown          UbusResponseCode = 9
 	UbusStatusConnectionFailed UbusResponseCode = 10
 	UbusStatusLast             UbusResponseCode = 11
+	UbusStatusAccessDenied                      = -32002
 )
 
 const (

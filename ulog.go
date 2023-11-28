@@ -12,7 +12,7 @@ type UbusLogData struct {
 	Time     int
 }
 
-func (u *ubus) LogWrite(id int, event string) error {
+func (u *UBus) LogWrite(id int, event string) error {
 	errLogin := u.Logined()
 	if errLogin != nil {
 		return errLogin

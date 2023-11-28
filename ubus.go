@@ -15,27 +15,24 @@ func init() {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 }
 
+type UbusParamMap map[string]interface{}
+
+type ubusParams struct {
+	UbusRPCSession,
+	UbusObj,
+	UbusMethod string
+	UbusParamMap `json:",omitempty"`
+}
+
 type ubusRequest struct {
 	JsonRPC string        `json:"jsonrpc"`
 	ID      int64         `json:"id"`
 	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
+	Params  []interface{} `json:"params,ommitempty"`
 }
 
-// ubusResult represents a response from JSON-RPC
-type ubusResult []interface{}
-
-func (res ubusResult) toString() string {
-	return string(res.toBytes())
-}
-
-func (res ubusResult) toBytes() []byte {
-	b, _ := json.Marshal(res)
-	return b
-}
-
-// ubus represents information to JSON-RPC Interaction with router
-type ubus struct {
+// UBus represents information to JSON-RPC Interaction with router
+type UBus struct {
 	endpoint string
 	authData
 	id int64
@@ -43,7 +40,7 @@ type ubus struct {
 	request func([]byte) ([]byte, error)
 }
 
-func NewUbus(endp string) (*ubus, error) {
+func NewUbus(endp string) (*UBus, error) {
 	if len(endp) == 0 {
 		endp = DefaultSocketPath
 	}
@@ -51,7 +48,7 @@ func NewUbus(endp string) (*ubus, error) {
 	if err != nil {
 		return nil, err
 	}
-	ub := &ubus{endpoint: endp, id: 1, authData: authData{UbusRPCSession: EmptySession}}
+	ub := &UBus{endpoint: endp, id: 1, authData: authData{UbusRPCSession: EmptySession}}
 	if u.Scheme == "http" || u.Scheme == "https" {
 		ub.request = func(jsonStr []byte) ([]byte, error) {
 			return httpRequest(endp, jsonStr)
@@ -64,17 +61,16 @@ func NewUbus(endp string) (*ubus, error) {
 	return ub, nil
 }
 
-func (u *ubus) buildReqestJson(method, ubusObj, ubusMethod string, args map[string]interface{}) []byte {
+func (u *UBus) buildReqestJson(method, ubusObj, ubusMethod string, args map[string]interface{}) []byte {
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+	params := []interface{}{u.UbusRPCSession, ubusObj, ubusMethod, args}
 	req := &ubusRequest{
 		JsonRPC: "2.0",
 		ID:      u.id,
 		Method:  method,
-		Params: []interface{}{
-			u.authData.UbusRPCSession,
-			ubusObj,
-			ubusMethod,
-			args,
-		},
+		Params:  params,
 	}
 	jsonReq, err := json.Marshal(req)
 	if err != nil {
@@ -83,37 +79,29 @@ func (u *ubus) buildReqestJson(method, ubusObj, ubusMethod string, args map[stri
 	return jsonReq
 }
 
-func (u *ubus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (string, error) {
+func (u *UBus) RPCRequest(method, ubusObj, ubusMethod string, args map[string]interface{}) (string, error) {
 	jsonReq := u.buildReqestJson(method, ubusObj, ubusMethod, args)
 	//slog.Debug(string(jsonReq))
 	body, err := u.request(jsonReq)
 	if err != nil || body == nil {
 		return "", err
 	}
-	//slog.Debug(string(body))
-	/*
-		resp := struct {
-			JsonRPC string     `json:"jsonrpc"`
-			ID      int        `json:"id"`
-			Result  ubusResult `json:"result"`
-			Error   struct {
-				Code    int
-				Message string
-			} `json:"error"`
-		}{}
-		json.Unmarshal(body, &resp)
-	*/
-	id := gjson.GetBytes(body, "id").Int()
+	bd := gjson.ParseBytes(body)
+	id := bd.Get("id").Int()
 	//Function Error
 	if id != u.id {
 		return "", SysErrorIDMismatch
 	}
 	u.id++
+	if err := bd.Get("error"); err.Exists() {
+		code := err.Get("code").Int()
+		return "", UbusError(int(code))
+	}
 	res := gjson.GetBytes(body, "result").Raw
 	return res, nil
 }
 
-func (u *ubus) Call(ubusObj, ubusMethod string, args map[string]interface{}) (string, error) {
+func (u *UBus) Call(ubusObj, ubusMethod string, args map[string]interface{}) (string, error) {
 	return u.RPCRequest("call", ubusObj, ubusMethod, args)
 }
 
